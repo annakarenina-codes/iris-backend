@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from pipeline.language_detector import detect_language
 from pipeline.opinion_filter import is_opinion
 from pipeline.political_checker import flag_political
+from pipeline.search import search_and_extract
 from pipeline.translator import translate_to_english
 
 app = Flask(__name__)
@@ -19,6 +20,67 @@ def build_response(base_response, debug_enabled, opinion_result, political_resul
         }
 
     return base_response
+
+def summarize_sources(source_summary, articles):
+    """Groups article links by source for Postman and the future UI."""
+    grouped_sources = []
+
+    for source in source_summary:
+        source_articles = [
+            {
+                "title": article["title"],
+                "url": article["url"],
+                "status": article["status"],
+                "word_count": article["word_count"],
+                "error": article["error"],
+            }
+            for article in articles
+            if article["source"] == source["source"]
+        ]
+
+        grouped_sources.append({
+            "source": source["source"],
+            "results_found": source["results_found"],
+            "articles_checked": source["articles_checked"],
+            "articles_extracted": source["articles_extracted"],
+            "articles": source_articles,
+        })
+
+    return grouped_sources
+
+def get_search_status(search_result):
+    """Creates a short status for the user-facing API response."""
+    statuses = []
+    for search in search_result["search"]["searches"]:
+        for report in search["source_reports"]:
+            statuses.append(report["status"])
+
+    if "missing_api_key" in statuses:
+        return {
+            "verdict": "Search Not Configured",
+            "status": "missing_api_key",
+            "message": "Brave Search is not configured yet. Add BRAVE_API_KEY to .env."
+        }
+
+    if statuses and all(status == "error" for status in statuses):
+        return {
+            "verdict": "Search Failed",
+            "status": "error",
+            "message": "IRIS could not reach the approved sources through Brave Search."
+        }
+
+    if search_result["total_search_results"] == 0:
+        return {
+            "verdict": "No Search Results",
+            "status": "no_results",
+            "message": "IRIS searched the approved sources but found no matching results."
+        }
+
+    return {
+        "verdict": "Search Complete",
+        "status": "ok",
+        "message": "IRIS searched the approved sources and extracted readable article text where possible."
+    }
 
 @app.route('/verify', methods=['POST'])
 def verify():
@@ -60,15 +122,35 @@ def verify():
 
         return jsonify(response)
 
+    search_result = search_and_extract(
+        primary_query=translated,
+        backup_query=text if language in ["tagalog", "taglish"] else None
+    )
+    search_status = get_search_status(search_result)
+
     response = build_response({
-        "verdict": "Preprocessing Complete",
-        "message": "The text is ready for search and article extraction.",
+        "verdict": search_status["verdict"],
+        "message": search_status["message"],
         "original_text": text,
         "translated_text": translated,
         "detected_language": language,
         "politically_sensitive": politically_sensitive,
-        "flags": flags
+        "flags": flags,
+        "search_status": search_status["status"],
+        "searched_sources": "VERA Files + 6 approved Philippine news sources",
+        "total_search_results": search_result["total_search_results"],
+        "searched_articles": search_result["searched_articles"],
+        "extracted_articles": search_result["extracted_articles"],
+        "source_summary": search_result["source_summary"],
+        "sources": summarize_sources(
+            search_result["source_summary"],
+            search_result["articles"]
+        )
     }, debug_enabled, opinion_result, political_result)
+
+    if debug_enabled:
+        response["debug"]["search"] = search_result["search"]
+        response["debug"]["articles_with_text"] = search_result["articles"]
 
     return jsonify(response)
 
