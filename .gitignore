@@ -1,5 +1,6 @@
 venv/
 .env
 __pycache__/
+.hf_cache/
 *.pyc
 .DS_Store

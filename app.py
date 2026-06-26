@@ -4,6 +4,7 @@ from pipeline.opinion_filter import is_opinion
 from pipeline.political_checker import flag_political
 from pipeline.search import search_and_extract
 from pipeline.translator import translate_to_english
+from pipeline.verdict_generator import generate_verdict
 
 app = Flask(__name__)
 app.json.sort_keys = False
@@ -127,15 +128,26 @@ def verify():
         backup_query=text if language in ["tagalog", "taglish"] else None
     )
     search_status = get_search_status(search_result)
+    verdict_result = generate_verdict(translated, search_result["articles"])
+
+    final_verdict = verdict_result["verdict"]
+    final_message = verdict_result["reason"]
+
+    if search_status["status"] != "ok":
+        final_verdict = search_status["verdict"]
+        final_message = search_status["message"]
 
     response = build_response({
-        "verdict": search_status["verdict"],
-        "message": search_status["message"],
+        "verdict": final_verdict,
+        "message": final_message,
         "original_text": text,
         "translated_text": translated,
         "detected_language": language,
         "politically_sensitive": politically_sensitive,
         "flags": flags,
+        "corroboration_count": verdict_result["corroboration_count"],
+        "primary_evidence": verdict_result["primary_evidence"],
+        "supporting_sources": verdict_result["supporting_sources"],
         "search_status": search_status["status"],
         "searched_sources": "VERA Files + 6 approved Philippine news sources",
         "total_search_results": search_result["total_search_results"],
@@ -151,6 +163,7 @@ def verify():
     if debug_enabled:
         response["debug"]["search"] = search_result["search"]
         response["debug"]["articles_with_text"] = search_result["articles"]
+        response["debug"]["similarity_thresholds"] = verdict_result["similarity_thresholds"]
 
     return jsonify(response)
 

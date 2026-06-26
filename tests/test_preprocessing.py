@@ -43,11 +43,13 @@ POLITICAL_SAMPLES = [
     "DILG released a memorandum for barangay officials.",
     "Senator Marcos filed a new bill.",
     "Maraming botante ang bumoto noong halalan.",
-    "The Department of Justice issued a public advisory.",
+    "The Department of Justice investigated a corruption complaint.",
     "PhilHealth announced a new contribution policy.",
 ]
 
 NON_POLITICAL_SAMPLES = [
+    "The Department of Health reported new dengue cases.",
+    "DOH reminded the public to remove mosquito breeding sites.",
     "A local school won a robotics competition.",
     "The weather bureau reported possible rainfall.",
     "A new restaurant opened in Cabanatuan City.",
